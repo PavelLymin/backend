@@ -1,97 +1,179 @@
 from fastapi import APIRouter, Depends, status, HTTPException
-from typing import Annotated
-from models import db_helper, Recipe, RecipeCreate, RecipeUpdate, RecipeRead, Allergen, Ingredient, RecipeIngredients, RecipeAllergens
-from config import settings
-from sqlalchemy.orm import selectinload
+from typing import Annotated, Optional
+from sqlalchemy.orm import contains_eager, selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from fastapi_pagination import Page
+from fastapi_pagination.ext.sqlalchemy import paginate 
+from fastapi_filter import FilterDepends, with_prefix
+from fastapi_filter.contrib.sqlalchemy import Filter
+from models.users import User
+from authentication.fastapi_users import current_active_user
+
+from config import settings 
+from models import db_helper
+from models import Recipe, RecipeCreate, RecipeUpdate, RecipeFullRead
+from models import Allergen, Ingredient, Cuisine, RecipeIngredients
+
 
 router = APIRouter(
     tags=["Recipes"],
     prefix=settings.url.recipes,
 )
 
-@router.get("", response_model=list[RecipeRead])
+class IngredientFilter(Filter):
+    id__in: Optional[list[int]] = None
+
+    class Constants(Filter.Constants):
+        model = Ingredient
+
+
+class RecipeIngredientFilter(Filter):
+    ingredient: Optional[IngredientFilter] = FilterDepends(
+        with_prefix("ingredient", IngredientFilter)
+    )
+
+    class Constants(Filter.Constants):
+        model = RecipeIngredients
+
+
+class RecipeFilter(Filter):
+    title__like: Optional[str] = None
+    ingredients: Optional[RecipeIngredientFilter] = FilterDepends(
+        with_prefix("ingredients", RecipeIngredientFilter)
+    )
+    order_by: Optional[list[str]] = None
+
+    class Constants(Filter.Constants):
+        model = Recipe
+
+@router.get("", response_model=Page[RecipeFullRead])
 async def fetch(
-    session: Annotated[
-        AsyncSession,
-        Depends(db_helper.session_getter),
-    ],
+    filter: Annotated[RecipeFilter, FilterDepends(RecipeFilter)],
+    session: Annotated[AsyncSession, Depends(db_helper.session_getter)],
 ):
     stmt = (
         select(Recipe)
+        .outerjoin(Recipe.cuisine)
+        .outerjoin(Recipe.author)
+        .outerjoin(Recipe.allergens)
+        .outerjoin(Recipe.ingredients)
+        .outerjoin(RecipeIngredients.ingredient)
         .options(
-            selectinload(Recipe.cuisine),
-            selectinload(Recipe.allergens),
-            selectinload(Recipe.ingredients)
-            .selectinload(RecipeIngredients.ingredient)
+            contains_eager(Recipe.cuisine),
+            contains_eager(Recipe.author),
+            contains_eager(Recipe.allergens),
+            contains_eager(Recipe.ingredients).contains_eager(RecipeIngredients.ingredient),
         )
-        .order_by(Recipe.id)
+        .distinct()
     )
-    
-    result = await session.execute(stmt) 
-    recipes = result.scalars().all()
-    return recipes
 
+    stmt = filter.sort(stmt)
+    stmt = filter.filter(stmt)
+    return await paginate(session, stmt)
 
-@router.post("", response_model=RecipeRead, status_code=status.HTTP_201_CREATED)
-async def create(
-    session: Annotated[
-        AsyncSession,
-        Depends(db_helper.session_getter),
-    ],
-    recipe_create: RecipeCreate,
+@router.get("/{id}", response_model=RecipeFullRead)
+async def fetch_one(
+    id: int,
+    session: Annotated[AsyncSession, Depends(db_helper.session_getter)],
 ):
+    stmt = (
+        select(Recipe)
+        .where(Recipe.id == id)
+        .outerjoin(Recipe.cuisine)
+        .outerjoin(Recipe.author)
+        .outerjoin(Recipe.allergens)
+        .outerjoin(Recipe.ingredients)
+        .outerjoin(RecipeIngredients.ingredient)
+        .options(
+            contains_eager(Recipe.cuisine),
+            contains_eager(Recipe.author),
+            contains_eager(Recipe.allergens),
+            contains_eager(Recipe.ingredients).contains_eager(RecipeIngredients.ingredient),
+        )
+        .distinct()
+    )
+
+    recipe = await session.scalar(stmt)
+    if not recipe:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Recipe with id {id} not found",
+        )
+    return recipe
+
+@router.post("", response_model=RecipeFullRead, status_code=status.HTTP_201_CREATED)
+async def create(
+    session: Annotated[AsyncSession, Depends(db_helper.session_getter)],
+    recipe_create: RecipeCreate,
+    user: User = Depends(current_active_user),
+):
+    cuisine = await session.get(Cuisine, recipe_create.cuisine_id)
+    if not cuisine:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Cuisine with id {recipe_create.cuisine_id} not found",
+        )
+
+    allergens = []
+    if recipe_create.allergen_ids:
+        allergens = await session.scalars(
+            select(Allergen).where(Allergen.id.in_(recipe_create.allergen_ids))
+        )
+        allergens = allergens.all()
+
+    recipe_ingredients = []
+    if recipe_create.ingredients:
+        ingredient_ids = {item.ingredient_id for item in recipe_create.ingredients}
+        ingredients = await session.scalars(
+            select(Ingredient).where(Ingredient.id.in_(ingredient_ids))
+        )
+        ingredients_map = {item.id: item for item in ingredients.all()}
+
+        missing_ids = ingredient_ids - set(ingredients_map.keys())
+        if missing_ids:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Ingredients not found: {missing_ids}",
+            )
+
+        recipe_ingredients = [
+            RecipeIngredients(
+                ingredient=ingredients_map[item.ingredient_id],
+                quantity=item.quantity,
+                measurement=item.measurement,
+            )
+            for item in recipe_create.ingredients
+        ]
+
     recipe = Recipe(
         cuisine_id=recipe_create.cuisine_id,
-        title=recipe_create.title, 
-        description=recipe_create.description, 
-        cooking_time=recipe_create.cooking_time, 
-        difficulty=recipe_create.difficulty)
-    
+        title=recipe_create.title,
+        description=recipe_create.description,
+        cooking_time=recipe_create.cooking_time,
+        difficulty=recipe_create.difficulty,
+        allergens=allergens,
+        ingredients=recipe_ingredients,
+        author_id=user.id
+    )
+
     session.add(recipe)
-    await session.flush()
-    
-    await __add_allergens(session, recipe_create, recipe)
-    await __add_ingredients(session, recipe_create, recipe)    
     await session.commit()
+
     stmt = (
         select(Recipe)
         .where(Recipe.id == recipe.id)
         .options(
-            selectinload(Recipe.allergens),  
-            selectinload(Recipe.ingredients)  
-            .selectinload(RecipeIngredients.ingredient) 
+            selectinload(Recipe.cuisine),
+            selectinload(Recipe.allergens),
+            selectinload(Recipe.ingredients).selectinload(RecipeIngredients.ingredient),
         )
-    )    
+    )
     recipe = await session.scalar(stmt)
     return recipe
 
-async def __add_allergens(session, recipe_create, recipe):
-    allergens =  await session.scalars(select(Allergen).where(Allergen.id.in_(recipe_create.allergen_ids)))
-    for allergen in allergens.all():
-        recipe_allergen = RecipeAllergens(
-            recipe_id=recipe.id,
-            allergen_id=allergen.id
-        )
-        session.add(recipe_allergen)
 
-
-async def __add_ingredients(session, recipe_create, recipe):
-    for ing_data in recipe_create.ingredients:
-        ing = await session.get(Ingredient, ing_data.ingredient_id)
-        if not ing:
-            raise HTTPException(404, f"Ingredient {ing_data.ingredient_id} not found")
-        recipe_ing = RecipeIngredients(
-            recipe=recipe,
-            ingredient=ing,
-            quantity=ing_data.quantity,
-            measurement=ing_data.measurement
-        )
-        session.add(recipe_ing)
-
-
-@router.put("/{id}", response_model=RecipeRead)
+@router.put("/{id}", response_model=RecipeFullRead)
 async def update(
     session: Annotated[
         AsyncSession,
@@ -99,13 +181,28 @@ async def update(
     ],
     id: int,
     recipe_update: RecipeUpdate,
+    user: User = Depends(current_active_user),
 ):
+    
     recipe = await session.get(Recipe, id)
+    if not recipe:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Recipe with id {id} not found",
+        )
+
+    if recipe.author_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not the author of this recipe",
+        )
+    
     recipe.title = recipe_update.title
     recipe.description = recipe_update.description
     recipe.cooking_time = recipe_update.cooking_time
     recipe.difficulty = recipe_update.difficulty
     recipe.cuisine_id = recipe_update.cuisine_id
+
     await session.commit()
     stmt = (
         select(Recipe)
@@ -127,11 +224,19 @@ async def delete(
         Depends(db_helper.session_getter),
     ],
     id: int,
+    user: User = Depends(current_active_user),
 ):
     recipe = await session.get(Recipe, id)
     if not recipe:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=f"Recipe with id {id} not found"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Recipe with id {id} not found",
+        )
+
+    if recipe.author_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not the author of this recipe",
         )
 
     await session.delete(recipe)

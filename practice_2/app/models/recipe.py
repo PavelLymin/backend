@@ -1,8 +1,10 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List
+
+from models.users import AuthorRead
 from .allergen import AllergenRead
-from .ingredient import IngredientRead
 from .recipe_ingredients import RecipeIngredientCreate, RecipeIngredientRead
+from .cuisine import CuisineRead
 
 class RecipeBase(BaseModel):
     cuisine_id: int
@@ -12,20 +14,31 @@ class RecipeBase(BaseModel):
     difficulty: int = Field(1, ge=1, le=5, description="Сложность от 1 до 5")
 
 
+class RecipeRead(RecipeBase):
+    id: int
+
+# class RecipeWithCuisineRead(RecipeRead):
+#     cuisine: Optional["CuisineRead"] = None
+
+# class RecipeWithIngredientsRead(RecipeRead):
+#     ingredients: List["RecipeIngredientRead"] = []
+
+# class RecipeWithAllergensRead(RecipeRead):
+#     allergens: List["AllergenRead"] = []
+
+
+
+class RecipeFullRead(RecipeRead):
+    cuisine: Optional["CuisineRead"] = None
+    ingredients: List["RecipeIngredientRead"] = []
+    allergens: List["AllergenRead"] = []
+    author: Optional[AuthorRead] = None
+
+
 class RecipeCreate(RecipeBase):
     allergen_ids: list[int]
     ingredients: list[RecipeIngredientCreate]
 
 
-class RecipeUpdate(BaseModel):
-    title: Optional[str] = Field(None, min_length=1, max_length=255)
-    description: Optional[str] = Field(None, min_length=1)
-    cooking_time: Optional[int] = Field(None, gt=0)
-    difficulty: Optional[int] = Field(None, ge=1, le=5)
-    cuisine_id: Optional[int] = Field(None)
-
-
-class RecipeRead(RecipeBase):
-    id: int
-    allergens: list[AllergenRead]
-    ingredients: list[RecipeIngredientRead]
+class RecipeUpdate(RecipeBase):
+    pass

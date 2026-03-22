@@ -1,11 +1,16 @@
-from typing import Annotated
-from fastapi import APIRouter, Depends, status, HTTPException
+from typing import Annotated, Optional
+from fastapi import APIRouter, Depends, Query, status, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from models import db_helper, Ingredient, IngredientCreate, IngredientRead, IngredientUpdate, RecipeRead, Recipe, RecipeIngredients
+from models.allergen import AllergenRead
+from models.cuisine import CuisineRead
+from models.recipe_ingredients import RecipeIngredientRead
+from models import db_helper
 from config import settings
+from models import Ingredient, IngredientCreate, IngredientRead, IngredientUpdate
+from models import Recipe, RecipeIngredients
 
 
 router = APIRouter(
@@ -13,37 +18,74 @@ router = APIRouter(
     prefix=settings.url.ingredients,
 )
 
-@router.get("/{id}/recipes", response_model=list[RecipeRead])
+ALLOWED_FIELDS = {"id", "title", "difficulty", "description", "cooking_time"}
+ALLOWED_INCLUDES = {"cuisine", "ingredients", "allergens"}
+
+
+@router.get("/{id}/recipes")
 async def get_recipes_by_ingredient(
-    session: Annotated[
-        AsyncSession,
-        Depends(db_helper.session_getter),
-    ],
+    session: Annotated[AsyncSession, Depends(db_helper.session_getter)],
     id: int,
+    include: Optional[str] = Query(None),
+    select_fields: Optional[str] = Query(None),
 ):
-    ingredient = await session.get(Ingredient, id)
-    if not ingredient:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Ingredient with id {id} not found"
-        )
-    
+    includes = set(include.split(",")) if include else set()
+    invalid_includes = includes - ALLOWED_INCLUDES
+    if invalid_includes:
+        raise HTTPException(400, f"Invalid include: {invalid_includes}")
+
     stmt = (
         select(Recipe)
         .join(RecipeIngredients)
         .where(RecipeIngredients.ingredient_id == id)
-        .options(
-            selectinload(Recipe.cuisine),
-            selectinload(Recipe.allergens),
-            selectinload(Recipe.ingredients).selectinload(RecipeIngredients.ingredient)
-        )
-        .order_by(Recipe.id)
     )
+
+    include_options = {
+        "cuisine": selectinload(Recipe.cuisine),
+        "allergens": selectinload(Recipe.allergens),
+        "ingredients": selectinload(Recipe.ingredients).selectinload(RecipeIngredients.ingredient),
+    }
+
+    for inc in includes:
+        stmt = stmt.options(include_options[inc])
+
+    recipes = (await session.scalars(stmt)).unique().all()
+
+    # select
+    if select_fields:
+        fields = set(select_fields.split(","))
+        invalid = fields - ALLOWED_FIELDS
+        if invalid:
+            raise HTTPException(400, f"Invalid fields: {invalid}")
+    else:
+        fields = ALLOWED_FIELDS
+
+    # сборка ответа
+    def serialize(recipe: Recipe):
+        data = {f: getattr(recipe, f) for f in fields}
+
+        if "cuisine" in includes:
+            data["cuisine"] = (
+                CuisineRead.model_validate(recipe.cuisine, from_attributes=True)
+                if recipe.cuisine else None
+            )
+
+        if "allergens" in includes:
+            data["allergens"] = [
+                AllergenRead.model_validate(a, from_attributes=True)
+                for a in recipe.allergens
+            ]
+
+        if "ingredients" in includes:
+            data["ingredients"] = [
+                RecipeIngredientRead.model_validate(i, from_attributes=True)
+                for i in recipe.ingredients
+            ]
+
+        return data
+
+    return [serialize(r) for r in recipes]
     
-    result = await session.execute(stmt)
-    recipes = result.unique().scalars().all()
-    
-    return recipes
 
 @router.get("", response_model=list[IngredientRead])
 async def fetch(

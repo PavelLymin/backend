@@ -15,3 +15,6 @@ class AllergenUpdate(AllergenBase):
 
 class AllergenRead(AllergenBase):
     id: int
+
+    class Config:
+        from_attributes = True

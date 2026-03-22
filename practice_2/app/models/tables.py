@@ -1,3 +1,4 @@
+from typing import TYPE_CHECKING
 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import String, Text, Integer, ForeignKey
@@ -5,8 +6,10 @@ from sqlalchemy.types import TypeDecorator, Integer as IntegerType
 
 import enum
 from enum import IntEnum
-
 from .base import Base
+
+if TYPE_CHECKING:
+    from .users import User
 
 
 class MeasurementEnum(IntEnum):
@@ -55,6 +58,10 @@ class Recipe(Base):
     allergens: Mapped[list["Allergen"]] = relationship(secondary="recipe_allergens", back_populates="recipes")
     ingredients: Mapped[list["RecipeIngredients"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
 
+    author_id: Mapped[int] = mapped_column(ForeignKey("user.id"), nullable=False)
+    author: Mapped["User"] = relationship(back_populates="recipes")
+
+
     def __repr__(self):
         return f'''Recipe(id={self.id}, 
         cuisine={self.cuisine_id}, 
@@ -98,7 +105,7 @@ class Ingredient(Base):
     def __repr__(self):
         return f'''Ingredient(id={self.id}, 
         title={self.name})'''
-    
+
 
 class RecipeAllergens(Base):
     __tablename__ = "recipe_allergens"
@@ -109,7 +116,7 @@ class RecipeAllergens(Base):
     def __repr__(self):
         return f'''RecipeAllergens(recipe_id={self.recipe_id}, 
         allergen_id={self.allergen_id})'''
-    
+
 
 class RecipeIngredients(Base):
     __tablename__ = "recipe_ingredients"
@@ -119,6 +126,7 @@ class RecipeIngredients(Base):
     ingredient_id: Mapped[int] = mapped_column(ForeignKey("ingredients.id", ondelete="CASCADE"))
     quantity: Mapped[int] = mapped_column(Integer)
     measurement: Mapped[MeasurementEnum] = mapped_column(CastIntEnum(MeasurementEnum), nullable=False)
+    
     recipe: Mapped["Recipe"] = relationship(back_populates="ingredients")
     ingredient: Mapped["Ingredient"] = relationship(back_populates="recipe_ingredients")
 

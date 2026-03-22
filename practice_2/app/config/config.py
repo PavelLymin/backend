@@ -3,12 +3,13 @@ from pydantic_settings import (
     BaseSettings,
     SettingsConfigDict,
 )
+from typing import Literal
 
 
 class RunConfig(BaseModel):
     host: str = "0.0.0.0"
     port: int = 8000
-    reload: bool = False
+    reload: bool = True
 
 
 class DatabaseConfig(BaseModel):
@@ -18,11 +19,32 @@ class DatabaseConfig(BaseModel):
     
 
 class UrlPrefix(BaseModel):
+    auth: str = "/auth"
     prefix: str = "/api"
     recipes: str = "/recipes"
     cuisines: str = "/cuisines"
     allergens: str = "/allergens"
     ingredients: str = "/ingredients"
+    users: str = "/users"
+
+    @property
+    def bearer_token_url(self) -> str:
+        # api/auth/login
+        parts = (self.prefix, self.auth, "/login")
+        path = "".join(parts)
+        return path.removeprefix("/")
+    
+
+class AuthConfig(BaseModel):
+    cookie_max_age: int = 3600
+    cookie_secure: bool = False
+    cookie_samesite: Literal["lax", "strict", "none"] = "lax"
+
+
+class AccessToken(BaseModel):
+    lifetime_seconds: int = 3600
+    reset_password_token_secret: str
+    verification_token_secret: str
 
 
 class Settings(BaseSettings):
@@ -34,7 +56,9 @@ class Settings(BaseSettings):
     )
     run: RunConfig = RunConfig()
     url: UrlPrefix = UrlPrefix()
+    auth: AuthConfig = AuthConfig()
     db: DatabaseConfig
+    access_token: AccessToken
 
 
 settings = Settings()
