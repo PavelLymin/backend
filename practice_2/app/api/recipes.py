@@ -47,6 +47,7 @@ class RecipeFilter(Filter):
     class Constants(Filter.Constants):
         model = Recipe
 
+
 @router.get("", response_model=Page[RecipeFullRead])
 async def fetch(
     filter: Annotated[RecipeFilter, FilterDepends(RecipeFilter)],

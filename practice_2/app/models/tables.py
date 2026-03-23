@@ -93,7 +93,7 @@ class Allergen(Base):
     def __repr__(self):
         return f'''Allergen(id={self.id}, 
         title={self.name})'''
-    
+
 
 class Ingredient(Base):
     __tablename__ = "ingredients"

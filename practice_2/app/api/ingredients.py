@@ -2,7 +2,7 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, Query, status, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import contains_eager, selectinload
 
 from models.allergen import AllergenRead
 from models.cuisine import CuisineRead
@@ -41,9 +41,9 @@ async def get_recipes_by_ingredient(
     )
 
     include_options = {
-        "cuisine": selectinload(Recipe.cuisine),
-        "allergens": selectinload(Recipe.allergens),
-        "ingredients": selectinload(Recipe.ingredients).selectinload(RecipeIngredients.ingredient),
+        "cuisine": contains_eager(Recipe.cuisine),
+        "allergens": contains_eager(Recipe.allergens),
+        "ingredients": contains_eager(Recipe.ingredients).contains_eager(RecipeIngredients.ingredient),
     }
 
     for inc in includes:
