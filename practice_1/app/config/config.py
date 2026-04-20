@@ -4,6 +4,9 @@ from pydantic_settings import (
     SettingsConfigDict,
 )
 
+class ApiConfig(BaseModel):
+    router_key: str
+
 
 class RunConfig(BaseModel):
     host: str = "0.0.0.0"
@@ -36,5 +39,6 @@ class Settings(BaseSettings):
     run: RunConfig = RunConfig()
     url: UrlPrefix = UrlPrefix()
     db: DatabaseConfig
+    api: ApiConfig
 
 settings = Settings()

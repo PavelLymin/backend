@@ -13,6 +13,11 @@ dependencies = [
     "fastapi-pagination>=0.15.10",
     "fastapi-users[sqlalchemy]>=15.0.4",
     "greenlet>=3.3.2",
+    "openai>=2.32.0",
     "pydantic-settings>=2.13.1",
+    "sqlalchemy>=2.0.47",
+    "taskiq>=0.12.2",
+    "taskiq-aio-pika>=0.6.0",
+    "taskiq-fastapi>=0.5.0",
     "uvicorn>=0.41.0",
 ]

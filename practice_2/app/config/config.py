@@ -5,6 +5,9 @@ from pydantic_settings import (
 )
 from typing import Literal
 
+class ApiConfig(BaseModel):
+    router_key: str
+
 
 class RunConfig(BaseModel):
     host: str = "0.0.0.0"
@@ -59,6 +62,7 @@ class Settings(BaseSettings):
     auth: AuthConfig = AuthConfig()
     db: DatabaseConfig
     access_token: AccessToken
-
+    api: ApiConfig
+    
 
 settings = Settings()

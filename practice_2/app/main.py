@@ -1,17 +1,27 @@
 import uvicorn
-from fastapi import FastAPI
-from contextlib import asynccontextmanager
-
 from config import settings
-from models import db_helper
 from api import router as api_router
 from fastapi_pagination import add_pagination
+
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+
+from task_queue.broker import broker
+from models import db_helper
+
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if not broker.is_worker_process:
+        await broker.startup()
+
     yield
+
     await db_helper.dispose()
+
+    if not broker.is_worker_process:
+        await broker.shutdown()
 
 app = FastAPI(lifespan=lifespan)
 

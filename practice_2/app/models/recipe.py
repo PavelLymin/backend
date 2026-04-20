@@ -17,16 +17,6 @@ class RecipeBase(BaseModel):
 class RecipeRead(RecipeBase):
     id: int
 
-# class RecipeWithCuisineRead(RecipeRead):
-#     cuisine: Optional["CuisineRead"] = None
-
-# class RecipeWithIngredientsRead(RecipeRead):
-#     ingredients: List["RecipeIngredientRead"] = []
-
-# class RecipeWithAllergensRead(RecipeRead):
-#     allergens: List["AllergenRead"] = []
-
-
 
 class RecipeFullRead(RecipeRead):
     cuisine: Optional["CuisineRead"] = None

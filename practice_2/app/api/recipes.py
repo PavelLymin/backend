@@ -1,3 +1,5 @@
+import json
+
 from fastapi import APIRouter, Depends, status, HTTPException
 from typing import Annotated, Optional
 from sqlalchemy.orm import contains_eager, selectinload
@@ -7,19 +9,38 @@ from fastapi_pagination import Page
 from fastapi_pagination.ext.sqlalchemy import paginate 
 from fastapi_filter import FilterDepends, with_prefix
 from fastapi_filter.contrib.sqlalchemy import Filter
+from tasks.recipe_generation import generate_recipe_task
 from models.users import User
 from authentication.fastapi_users import current_active_user
+from pydantic import BaseModel, Field
 
 from config import settings 
 from models import db_helper
 from models import Recipe, RecipeCreate, RecipeUpdate, RecipeFullRead
 from models import Allergen, Ingredient, Cuisine, RecipeIngredients
 
+from openai import AsyncOpenAI
+
+
+class RecipeGenerateRequest(BaseModel):
+    prompt: str = Field(..., min_length=1, description="Описание желаемого рецепта")
+
+
+class RecipeGenerateResponse(BaseModel):
+    status: str = Field(..., description="Статус обработки запроса")
+    message: str = Field(default="Генерация началась", description="Сообщение")
+
+
+client = AsyncOpenAI(
+    api_key=settings.api.router_key,
+    base_url="https://openrouter.ai/api/v1",
+)
 
 router = APIRouter(
     tags=["Recipes"],
     prefix=settings.url.recipes,
 )
+
 
 class IngredientFilter(Filter):
     id__in: Optional[list[int]] = None
@@ -46,6 +67,22 @@ class RecipeFilter(Filter):
 
     class Constants(Filter.Constants):
         model = Recipe
+
+
+@router.post("/generate", response_model=RecipeGenerateResponse, status_code=status.HTTP_202_ACCEPTED)
+async def generate_recipe(
+    request: RecipeGenerateRequest,
+    user: User = Depends(current_active_user),
+):
+    await generate_recipe_task.kiq(
+        prompt=request.prompt,
+        user_id=user.id,
+    )
+    
+    return RecipeGenerateResponse(
+        status="queued",
+        message="Генерация рецепта началась. Результат будет доступен в ближайшее время.",
+    )
 
 
 @router.get("", response_model=Page[RecipeFullRead])
