@@ -1,0 +1,15 @@
+[project]
+name = "practice"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "aiosqlite>=0.22.1",
+    "dishka>=1.10.1",
+    "fastapi>=0.136.1",
+    "greenlet>=3.5.0",
+    "pydantic-settings>=2.14.1",
+    "sqlalchemy>=2.0.49",
+    "uvicorn>=0.47.0",
+]
