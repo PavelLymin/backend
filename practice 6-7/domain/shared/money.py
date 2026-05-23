@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 
 @dataclass(frozen=True)
@@ -36,15 +36,14 @@ class Money:
             raise ValueError("Subtraction would result in negative money")
         return Money(amount_minor=result)
 
-    def __mul__(self, multiplier: int | float) -> "Money":
-        if isinstance(multiplier, (int, float)):
-            return Money(amount_minor=int(self.amount_minor * multiplier))
-        return NotImplemented
+    def __mul__(self, factor: int | float | Decimal) -> "Money":
+        result = Decimal(self.amount_minor) * Decimal(str(factor))
+        return Money(int(result.quantize(Decimal("1"), rounding=ROUND_HALF_UP)))
 
-    def __rmul__(self, multiplier: int | float) -> "Money":
+    def __rmul__(self, multiplier: int | float | Decimal) -> "Money":
         return self.__mul__(multiplier)
 
-    def __truediv__(self, divisor: int | float) -> "Money":
+    def __truediv__(self, divisor: int | float | Decimal) -> "Money":
         if isinstance(divisor, (int, float)):
             return Money(amount_minor=int(self.amount_minor / divisor))
         return NotImplemented
