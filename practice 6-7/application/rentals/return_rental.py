@@ -19,8 +19,7 @@ class ReturnRentalUseCase:
         rental = await self.rental_repository.get_by_id(rental_id)
         if rental is None:
             raise ValueError(f"Rental with id {rental_id} not found.")
-        returned_on = self.clock.now()
-        rental.return_rental(returned_on)
+        rental.return_rental(self.clock.now())
         await self.rental_repository.save(rental)
         await self.unit_of_work.commit()
         return rental

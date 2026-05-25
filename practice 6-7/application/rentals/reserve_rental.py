@@ -1,13 +1,19 @@
 from datetime import date
+from pydantic import BaseModel, Field
 
 from application.protocols.clock import Clock
 from domain.rentals.rental import Rental
-from domain.rentals.status import RentalStatus
 from domain.rentals.date_range import DateRange
 from domain.rentals.repository import IRentalRepository
 from domain.scooters.repository import IScooterRepository
 from application.protocols.unit_of_work import UnitOfWork
 from domain.rentals.pricing_service import PricingService
+
+class ReserveRentalCommand(BaseModel):
+    scooter_id: int = Field(..., description="ID самоката для бронирования")
+    user_id: int = Field(..., description="ID пользователя, который арендует")
+    start_date: date = Field(..., description="Дата начала аренды")
+    end_date: date = Field(..., description="Дата окончания аренды")
 
 
 class ReserveRentalUseCase:
@@ -28,38 +34,28 @@ class ReserveRentalUseCase:
 
     async def execute(
         self,
-        scooter_id: int,
-        user_id: int,
-        start_date: date,
-        end_date: date,
+        command: ReserveRentalCommand,
     ) -> Rental:
-        scooter = await self.scooter_repository.get_by_id(scooter_id)
+        scooter = await self.scooter_repository.get_by_id(command.scooter_id)
 
         if scooter is None:
-            raise ValueError(f"Scooter with id {scooter_id} not found.")
+            raise ValueError(f"Scooter with id {command.scooter_id} not found.")
 
-        period = DateRange(start=start_date, end=end_date)
+        period = DateRange(start=command.start_date, end=command.end_date)
 
-        active_rentals = await self.rental_repository.get_active_rentals(
-            scooter_id, period
-        )
-        if active_rentals:
+        if await self.rental_repository.get_active_rentals(
+            command.scooter_id, period
+        ):
             raise ValueError(
-                f"Scooter {scooter_id} has active rentals during period {period}"
+                f"Scooter {command.scooter_id} has active rentals during period {period}"
             )
 
-        pricing_details = self.pricing_service.calculate_price(scooter, period)
-
-        rental = Rental(
-            id=None,
-            scooter_id=scooter_id,
-            user_id=user_id,
+        rental = Rental.create(
+            scooter=scooter,
+            user_id=command.user_id,
             period=period,
-            total_price=pricing_details.total_price,
-            price_for_period=pricing_details.price_for_period,
-            deposit_amount=pricing_details.deposit,
-            status=RentalStatus.RESERVED,
-            created_on=self.clock.now(),
+            pricing_service=self.pricing_service,
+            current_time=self.clock.now(),
         )
 
         saved_rental = await self.rental_repository.save(rental)

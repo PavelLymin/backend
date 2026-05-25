@@ -20,8 +20,7 @@ class CancelRentalUseCase:
         rental = await self.rental_repository.get_by_id(rental_id)
         if rental is None:
             raise ValueError(f"Rental with id {rental_id} not found.")
-        cancelled_on = self.clock.now()
-        rental.cancel(cancelled_on)
+        rental.cancel(self.clock.now())
         await self.rental_repository.save(rental)
         await self.unit_of_work.commit()
         return rental

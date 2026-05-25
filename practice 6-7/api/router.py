@@ -2,7 +2,7 @@ from datetime import date
 from fastapi import APIRouter, HTTPException, status
 from dishka.integrations.fastapi import FromDishka, inject
 
-from application.rentals.reserve_rental import ReserveRentalUseCase
+from application.rentals.reserve_rental import ReserveRentalCommand, ReserveRentalUseCase
 from application.rentals.activate_rental import ActivateRentalUseCase
 from application.rentals.return_rental import ReturnRentalUseCase
 from application.rentals.cancel_rental import CancelRentalUseCase
@@ -15,19 +15,11 @@ router = APIRouter(tags=["Rentals"])
 @router.post("/rentals/reserve", status_code=status.HTTP_201_CREATED)
 @inject
 async def reserve_rental(
-    scooter_id: int,
-    user_id: int,
-    start_date: date,
-    end_date: date,
+    request_data: ReserveRentalCommand,
     use_case: FromDishka[ReserveRentalUseCase],
 ) -> Rental:
     try:
-        return await use_case.execute(
-            scooter_id=scooter_id,
-            user_id=user_id,
-            start_date=start_date,
-            end_date=end_date,
-        )
+        return await use_case.execute(command=request_data)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
 

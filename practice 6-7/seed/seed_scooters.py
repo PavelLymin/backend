@@ -21,14 +21,14 @@ async def seed_data():
             serial_number="XIAOMI-12345-M",
             category=ScooterCategory.CITY,
             daily_rate=Money.from_major(500),  # 500 рублей/сутки
-            deposit=Money.from_major(2000),    # залог 2000 рублей
+            deposit=Money.from_major(2000),
             condition=ScooterCondition.EXCELLENT
         ),
         ScooterModel(
             model_name="Ninebot KickScooter MAX",
             serial_number="NINEBOT-9988-X",
             category=ScooterCategory.MOUNTAIN,
-            daily_rate=Money.from_major(800),  # Наценка посчитается в Use Case, тут базовая ставка
+            daily_rate=Money.from_major(800),
             deposit=Money.from_major(4000),
             condition=ScooterCondition.GOOD
         ),

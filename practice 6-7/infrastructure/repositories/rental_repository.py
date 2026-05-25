@@ -1,5 +1,4 @@
-from typing import List
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from domain.rentals.date_range import DateRange
@@ -19,7 +18,7 @@ class RentalRepositoryImpl(IRentalRepository):
         if not model:
             return None
         return model.to_domain()
-    
+ 
     async def save(self, rental: Rental) -> Rental:
         model = None
         if rental.id is not None:
@@ -35,16 +34,15 @@ class RentalRepositoryImpl(IRentalRepository):
 
     async def get_active_rentals(
         self, scooter_id: int, period: DateRange
-    ) -> List[Rental]:
+    ) -> bool:
         stmt = (
-        select(RentalModel)
-        .where(
-            RentalModel.scooter_id == scooter_id,
-            RentalModel.status.in_([RentalStatus.RESERVED, RentalStatus.ACTIVE]),
-            RentalModel.period_end >= period.start,
-            RentalModel.period_start <= period.end,       
+            select(exists(RentalModel))
+            .where(
+                RentalModel.scooter_id == scooter_id,
+                RentalModel.status.in_([RentalStatus.RESERVED, RentalStatus.ACTIVE]),
+                RentalModel.period_end >= period.start,
+                RentalModel.period_start <= period.end,
             )
         )
         result = await self.session.execute(stmt)
-        models = result.scalars().all()
-        return [model.to_domain() for model in models]
+        return bool(result.scalar())
