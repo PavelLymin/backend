@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock
 from datetime import datetime, date
 
-from application.rentals.reserve_rental import ReserveRentalUseCase
+from application.rentals.reserve_rental import ReserveRentalCommand, ReserveRentalUseCase
 from domain.rentals.rental import Rental
 from domain.rentals.status import RentalStatus
 from domain.rentals.date_range import DateRange
@@ -90,8 +90,15 @@ class TestReserveRentalUseCase:
             clock=clock
         )
 
+        command = ReserveRentalCommand(
+            scooter_id=scooter_id,
+            user_id=user_id,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
         # Act
-        result = await use_case.execute(scooter_id, user_id, start_date, end_date)
+        result = await use_case.execute(command)
 
         # Assert
         assert result == expected_saved_rental
@@ -115,8 +122,14 @@ class TestReserveRentalUseCase:
         use_case = ReserveRentalUseCase(*mock_dependencies)
 
         # Act & Assert
+        command = ReserveRentalCommand(
+            scooter_id=404,
+            user_id=99,
+            start_date=date(2026, 5, 22),
+            end_date=date(2026, 5, 25)
+        )
         with pytest.raises(ValueError, match="Scooter with id 404 not found."):
-            await use_case.execute(404, 99, date(2026, 5, 22), date(2026, 5, 25))
+            await use_case.execute(command)
 
         rental_repo.get_active_rentals.assert_not_awaited()
         rental_repo.save.assert_not_awaited()
@@ -140,8 +153,14 @@ class TestReserveRentalUseCase:
         use_case = ReserveRentalUseCase(*mock_dependencies)
 
         # Act & Assert
+        command = ReserveRentalCommand(
+            scooter_id=scooter_id,
+            user_id=99,
+            start_date=date(2026, 5, 22),
+            end_date=date(2026, 5, 25)
+        )
         with pytest.raises(ValueError, match="has active rentals during period"):
-            await use_case.execute(scooter_id, 99, date(2026, 5, 22), date(2026, 5, 25))
+            await use_case.execute(command)
 
         # Расчет цены и сохранение не должны вызываться
         pricing_service.calculate_price.assert_not_called()
